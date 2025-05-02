@@ -25,7 +25,7 @@ jobs:
         run: gcc -o rameater.exe main.c  # Replace "your_file.c" with your filename
 
       - name: Upload executable artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: rameater.exe
           path: rameater.exe
