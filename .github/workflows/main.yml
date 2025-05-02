@@ -1,0 +1,31 @@
+name: Build C Executable
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 and install GCC
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: mingw-w64-x86_64-gcc  # Installs GCC for Windows
+
+      - name: Compile C file
+        shell: msys2 {0}  # Use MSYS2 shell for compilation
+        run: gcc -o rameater.exe main.c  # Replace "your_file.c" with your filename
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: rameater.exe
+          path: rameater.exe
