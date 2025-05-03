@@ -22,7 +22,7 @@ jobs:
 
       - name: Compile C file
         shell: msys2 {0}  # Use MSYS2 shell for compilation
-        run: gcc -o rameater.exe main.c  # Replace "your_file.c" with your filename
+        run: gcc -o rameater.exe main.c -mwindows # Replace "your_file.c" with your filename
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
