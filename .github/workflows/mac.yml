@@ -1,0 +1,48 @@
+name: Build C Executable for macOS
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compile for macOS
+        run: |
+          gcc -o rameater main.c -framework Foundation -framework AppKit
+          file rameater
+
+      - name: Upload macOS executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rameater-macos
+          path: rameater
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 and install GCC
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: mingw-w64-x86_64-gcc
+
+      - name: Compile C file
+        shell: msys2 {0}
+        run: gcc -o rameater.exe main_original.c -mwindows
+
+      - name: Upload Windows executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rameater-windows
+          path: rameater.exe
