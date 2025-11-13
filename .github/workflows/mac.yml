@@ -16,7 +16,7 @@ jobs:
 
       - name: Compile for macOS
         run: |
-          gcc -o rameater main.c -framework Foundation -framework AppKit
+          gcc -o rameater mac.c -framework Foundation -framework AppKit
           file rameater
 
       - name: Upload macOS executable artifact
